@@ -1,3 +1,5 @@
+set.seed(1989)
+
 library("ape") # dealing with phylogenies
 library("phytools") # phylogengenetic methods
 library("OUwie") # modeling trait evolution
@@ -32,13 +34,24 @@ option_list <- list (
   optparse::make_option(
     c("--out_dir"),
     type = "character",
-    help = "location where folder should be placed, example: '../output/' (CHARACTER)"
+    help = "Location where folder should be placed, example: '../output/' (CHARACTER)"
+  ),
+  optparse::make_option(
+    c("--effect_size"),
+    type = "double",
+    help = "Effect size when OU model is selected (DOUBLE)"
   )
 )
 
 opt_parser <- optparse::OptionParser(option_list = option_list)
 opt <- optparse::parse_args(opt_parser)
 
+
+if(opt$microbe_sim_type == "ou"){
+  if(is.null(opt$effect_size)){
+    stop("ERROR: Need to specify effect size if OU microbe model selected")
+  } else {}
+} else {}
 
 # check if all options are specified, if not stop and help
 if(any(c(is.null(opt$n_ASV), is.null(opt$n_simulations), is.null(opt$microbe_sim_type), is.null(opt$sim_number)), is.null(opt$out_dir)) == TRUE) {
@@ -57,9 +70,10 @@ n_ASV <- opt$n_ASV
 n_simulations <- opt$n_simulations
 microbe_sim_type <- opt$microbe_sim_type
 out_dir <- opt$out_dir
+effect_size <- opt$effect_size
 
 # components of information for archive file
-simulation_id = paste("S", sim_number, sep="")
+simulation_id = paste("S", sprintf('%02d', sim_number), sep="")
 host_info = "host_ER_BM"
 microbe_info = paste("microbe", microbe_sim_type, n_ASV, sep = "_")
 tree_info = "coral_tree"
@@ -74,6 +88,9 @@ cat(paste("Simulation ID:", opt$n_ASV, "\n"))
 cat(paste("Total ASVs:", opt$n_ASV, "\n"))
 cat(paste("Total tables:", opt$n_simulations, "\n"))
 cat(paste("Simulation type:", opt$microbe_sim_type, "\n"))
+if(exists("opt$effect_size")){
+  cat(paste("Effect size:", opt$effect_size,"\n"))
+}
 cat(paste("Output archive:", output_zip), "\n--\n\n")
 
 
@@ -107,26 +124,31 @@ bm_uncorrelated <- function(n_ASV) {
 }
 
 ou_correlated <- function(n_ASV) {
-  percent_affected <- 0.12
-  effect_size <- 0.5 # for transforming theta
-  
+  # prop_affected <- 0.12 -- WE ARE MAKING 
+  # effect_size # for transforming theta
+  # microbe_effect_df <- data.frame(matrix(nrow = 0, ncol = 2))
+  # colnames(microbe_effect_df) <- c("ASV_id", "effect_size")
   for (j in 1:n_ASV) {
-      roll <- runif(n = 1, min = 0, max = 1) # roll for a random number between 0 and 1
-      if (roll <= percent_affected) {
-          tmp_alpha <- 1
-      } else if (roll > percent_affected) {
-          tmp_alpha <- 1e-10
-      }
-      
-      theta_a <- rnorm(n = 1, mean = 0, sd = 2)
+      tmp_colname <- paste("microbe", j, sep = "_")
+      # roll <- runif(n = 1, min = 0, max = 1) # roll for a random number between 0 and 1
+      # if (roll <= prop_affected) {
+      #   tmp_alpha <- 1e-2
+      #   microbe_effect_df[nrow(microbe_effect_df) + 1,] <- c(tmp_colname, effect_size)
+      # } else if (roll > prop_affected) {
+      #   tmp_alpha <- 1e-10
+      #   microbe_effect_df[nrow(microbe_effect_df) + 1,] <- c(tmp_colname, 0)
+      # }
+      tmp_alpha <- 1e-2
+      # microbe_effect_df[nrow(microbe_effect_df) + 1,] <- c(tmp_colname, effect_size)
+      theta_a <- rnorm(n = 1, mean = 0, sd = 1)
       theta_b <- theta_a*effect_size
       thetas <- sample(c(theta_a, theta_b))
   
       tmp_trait <- OUwie::OUwie.sim(phy = s.trait_history, simmap.tree = TRUE, alpha = c(tmp_alpha, tmp_alpha), sigma.sq = c(1, 1), theta0 = 0, theta = thetas)
-      tmp_colname <- paste("microbe", j, sep = "_")
       tmp_microbes[[tmp_colname]] <- tmp_trait$X
   }
   assign("tmp_microbes", tmp_microbes, envir = .GlobalEnv)
+  # assign("microbe_effect_df", microbe_effect_df, envir = .GlobalEnv)
 }
 
 
@@ -193,8 +215,19 @@ for (i in 1:n_simulations){
     x = tmp_microbes,
     file = paste(tmp_output_folder, simulation_id, "_", sim_iteration, "_raw_microbial_traits.tsv", sep = ""),
     row.names = FALSE,
-    sep="\t"
+    sep = "\t"
   )
+
+  # Export microbe effect df to see what microbes should be affected
+  # ONLY IF OU
+  if (exists("microbe_effect_df")){
+    write.table(
+      x = microbe_effect_df,
+      file = paste(tmp_output_folder, simulation_id, "_", sim_iteration, "_raw_microbial_trait_effect_size_dict.tsv", sep = ""),
+      row.names = FALSE,
+      sep = "\t"
+    )
+  }
   
   setTxtProgressBar(pb,i) # add to progress bar
 }
