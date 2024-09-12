@@ -163,3 +163,4 @@ cython_debug/
 
 # Simulation archives
 S*.zip
+output/S*/
