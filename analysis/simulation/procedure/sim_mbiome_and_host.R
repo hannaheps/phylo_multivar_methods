@@ -40,6 +40,17 @@ option_list <- list (
     c("--effect_size"),
     type = "double",
     help = "Effect size when OU model is selected (DOUBLE)"
+  ),
+  optparse::make_option(
+    c("--feature_cont_trait"),
+    type = "logical",
+    default = FALSE,
+    help = "Generate continuous host trait folder (TRUE) or categorical host trait (DEFAULT/FALSE) (LOGICAL)"
+  ),
+  optparse::make_option(
+    c("--feature_cont_trait_corr"),
+    type = "numeric",
+    help = "Set correlation for continuous host trait with feature traits (NUMERIC)"
   )
 )
 
@@ -50,6 +61,12 @@ opt <- optparse::parse_args(opt_parser)
 if(opt$microbe_sim_type == "ou"){
   if(is.null(opt$effect_size)){
     stop("ERROR: Need to specify effect size if OU microbe model selected")
+  } else {}
+} else {}
+
+if(opt$feature_cont_trait == TRUE){
+  if(is.null(opt$feature_cont_trait_corr)){
+    stop("ERROR: Need to specify correlation value") # TODO -- check what the correlation metric is
   } else {}
 } else {}
 
@@ -71,6 +88,8 @@ n_simulations <- opt$n_simulations
 microbe_sim_type <- opt$microbe_sim_type
 out_dir <- opt$out_dir
 effect_size <- opt$effect_size
+feature_cont_trait <- opt$feature_cont_trait
+cont_trait_corr <- opt$feature_cont_trait_corr
 
 # components of information for archive file
 simulation_id = paste("S", sprintf('%02d', sim_number), sep="")
@@ -87,6 +106,10 @@ cat("\nGenerating a zip folder of simulated microbial data files with these attr
 cat(paste("Simulation ID:", opt$n_ASV, "\n"))
 cat(paste("Total ASVs:", opt$n_ASV, "\n"))
 cat(paste("Total tables:", opt$n_simulations, "\n"))
+cat(paste("Continuous Similuation?"))
+if(feature_cont_trait == TRUE) {
+  cat(paste("Correlation with host:", opt$))
+}
 cat(paste("Simulation type:", opt$microbe_sim_type, "\n"))
 if(exists("opt$effect_size")){
   cat(paste("Effect size:", opt$effect_size,"\n"))
@@ -107,7 +130,7 @@ dir.create(tmp_output_folder) # create tmp output folder
 # Define functions for each simulation type
 random_uncorrelated <- function(n_ASV) {
   for (j in 1:n_ASV) {
-      tmp_trait <- rnorm(n = 1, mean = 0, sd = 10)
+      tmp_trait <- rnorm(n = n_species, mean = 0, sd = 10)
       tmp_colname <- paste("microbe", j, sep = "_")
       tmp_microbes[[tmp_colname]] <- tmp_trait
   }
@@ -151,6 +174,22 @@ ou_correlated <- function(n_ASV) {
   # assign("microbe_effect_df", microbe_effect_df, envir = .GlobalEnv)
 }
 
+generate_cov_matrix <- function(n_ASVs, host_ASV_cov) {
+  # Initializer n+1 x n+1 matrix with zeroes, where n+1 is the host and number of ASVs 
+  cov_matrix <- matrix(0, n_ASVs+1, n_ASVs+1)
+  
+  # Set variances (diagonals) to 1
+  diag(cov_matrix) <- 1
+  
+  # Set the covariance of all traits with host to 'a'
+  cov_matrix[1,] <- host_ASV_cov
+  cov_matrix[,1] <- host_ASV_cov
+  
+  # Set the variance of the host to 1
+  cov_matrix[1,1] <- 1
+  
+  return(cov_matrix)
+}
 
 # Load HR2015 phylogeny
 coral_phy <- ape::read.tree("../input/huang_roy_molecular_r2.newick")
@@ -159,80 +198,106 @@ n_species <- length(coral_phy$tip.label)
 
 cat("Simulating host and microbiome...\n")
 pb = txtProgressBar(min = 0, max = n_simulations, initial = 0, style = 3) # create progress bar
-for (i in 1:n_simulations){
-  sim_iteration = sprintf('%04d', i)
-  # Simulate host
-  # Generate random equal-rates Q matrix with two states
 
-  n.states <- 2
-  transition_model <- "ER"
+# if feature_cont_trait == FALSE
+if (feature_cont_trait == FALSE) {
+  for (i in 1:n_simulations){
+    sim_iteration = sprintf('%04d', i)
+    # Simulate host
+    # Generate random equal-rates Q matrix with two states
 
-  r.Q <- castor::get_random_mk_transition_matrix(
-    Nstates = n.states,
-    rate_model = transition_model
-  )
-  colnames(r.Q) <- c('A','B')
-  rownames(r.Q) <- c('A','B')
+    n.states <- 2
+    transition_model <- "ER"
 
-  # Simulate random discrete HOST trait across tree (root. value)
-  s.trait_history <- phytools::sim.history(tree = coral_phy, Q = r.Q, anc = "A", message = FALSE)
+    r.Q <- castor::get_random_mk_transition_matrix(
+      Nstates = n.states,
+      rate_model = transition_model
+    )
+    colnames(r.Q) <- c('A','B')
+    rownames(r.Q) <- c('A','B')
 
-  # Simulate uncorrelated continuous HOST trait (evolving via BM)
-  host_uncorrelated_cont <- OUwie::OUwie.sim(
-    phy = s.trait_history,
-    simmap.tree = TRUE,
-    alpha = c(1e-10, 1e-10),
-    sigma.sq = c(1, 1),
-    theta0 = 0, theta = c(0, 0)
-  )
+    # Simulate random discrete HOST trait across tree (root. value)
+    s.trait_history <- phytools::sim.history(tree = coral_phy, Q = r.Q, anc = "A", message = FALSE)
 
-  tmp_host_df <- data.frame(disc_trait_ER = s.trait_history$states, host_cont_trait = host_uncorrelated_cont$X)
-  tmp_host_df <- cbind('#SampleID' = rownames(tmp_host_df), tmp_host_df)
-  
-  # Export host table
-  write.table(
-    x = tmp_host_df,
-    file = paste(tmp_output_folder, simulation_id, "_", sim_iteration, "_raw_host_traits.tsv", sep = ""),
-    row.names = FALSE,
-    sep="\t"
-  )
-  
-  # Simulate microbiome
-  tmp_microbes <- data.frame('#SampleID' = coral_phy$tip.label, check.names = FALSE)
-  
-  if (microbe_sim_type == "random") {
-    random_uncorrelated(n_ASV)
-  } else if (microbe_sim_type == "bm") {
-    bm_uncorrelated(n_ASV)
-  } else if (microbe_sim_type == "ou") {
-    ou_correlated(n_ASV)
-  } else {
-    stop("Invalid microbe_sim_type, should be random, bm, or ou")
-  }
+    # Simulate uncorrelated continuous HOST trait (evolving via BM)
+    host_uncorrelated_cont <- OUwie::OUwie.sim(
+      phy = s.trait_history,
+      simmap.tree = TRUE,
+      alpha = c(1e-10, 1e-10),
+      sigma.sq = c(1, 1),
+      theta0 = 0, theta = c(0, 0)
+    )
 
-  # Export microbiome
-  write.table(
-    x = tmp_microbes,
-    file = paste(tmp_output_folder, simulation_id, "_", sim_iteration, "_raw_microbial_traits.tsv", sep = ""),
-    row.names = FALSE,
-    sep = "\t"
-  )
-
-  # Export microbe effect df to see what microbes should be affected
-  # ONLY IF OU
-  if (exists("microbe_effect_df")){
+    tmp_host_df <- data.frame(disc_trait_ER = s.trait_history$states, host_cont_trait = host_uncorrelated_cont$X)
+    tmp_host_df <- cbind('#SampleID' = rownames(tmp_host_df), tmp_host_df)
+    
+    # Export host table
     write.table(
-      x = microbe_effect_df,
-      file = paste(tmp_output_folder, simulation_id, "_", sim_iteration, "_raw_microbial_trait_effect_size_dict.tsv", sep = ""),
+      x = tmp_host_df,
+      file = paste(tmp_output_folder, simulation_id, "_", sim_iteration, "_raw_host_traits.tsv", sep = ""),
+      row.names = FALSE,
+      sep="\t"
+    )
+    
+    # Simulate microbiome
+    tmp_microbes <- data.frame('#SampleID' = coral_phy$tip.label, check.names = FALSE)
+    
+    if (microbe_sim_type == "random") {
+      random_uncorrelated(n_ASV)
+    } else if (microbe_sim_type == "bm") {
+      bm_uncorrelated(n_ASV)
+    } else if (microbe_sim_type == "ou") {
+      ou_correlated(n_ASV)
+    } else {
+      stop("Invalid microbe_sim_type, should be random, bm, or ou")
+    }
+
+    # Export microbiome
+    write.table(
+      x = tmp_microbes,
+      file = paste(tmp_output_folder, simulation_id, "_", sim_iteration, "_raw_microbial_traits.tsv", sep = ""),
       row.names = FALSE,
       sep = "\t"
     )
-  }
-  
-  setTxtProgressBar(pb,i) # add to progress bar
-}
-close(pb) # end progress bar
 
+    # Export microbe effect df to see what microbes should be affected
+    # ONLY IF OU
+    if (exists("microbe_effect_df")){
+      write.table(
+        x = microbe_effect_df,
+        file = paste(tmp_output_folder, simulation_id, "_", sim_iteration, "_raw_microbial_trait_effect_size_dict.tsv", sep = ""),
+        row.names = FALSE,
+        sep = "\t"
+      )
+    }
+    
+    setTxtProgressBar(pb,i) # add to progress bar
+  }
+} else if (feature_cont_trait == TRUE){
+  for (i in 1:n_simulations){
+    sim_iteration = sprintf('%04d', i)
+    
+    tmp_vcv <- generate_cov_matrix(n_ASVs = 1000, host_ASV_cov = 0.5)
+    tmp_cov_trait <- data.frame(phytools::sim.corrs(tree = coral_phy, vcv = tmp_vcv))
+    vcv_colnames <- c("host_trait")
+    for (i in 1:n_ASV){
+      vcv_colnames[i+1] <- paste("microbe", i, sep = "_") # i+1 to account for host
+    }
+    colnames(tmp_cov_trait) <- vcv_colnames
+    
+    tmp_host_and_microbe_df <- cbind('#SampleID' = coral_phy$tip.label, tmp_cov_trait)
+    
+    write.table(
+      x = tmp_host_and_microbe_df,
+      file = paste(tmp_output_folder, simulation_id, "_", sim_iteration, "_host_and_microbe_traits.tsv", sep=""),
+      row.names = FALSE,
+      sep = "\t"
+    )
+    setTxtProgressBar(pb,i) # add to progress bar
+  }
+} else {}
+
+close(pb) # end progress bar
 # -- Output --
 
 # # Export host data
