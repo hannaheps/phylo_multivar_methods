@@ -48,10 +48,21 @@ option_list <- list (
     help = "Generate continuous host trait folder (TRUE) or categorical host trait (DEFAULT/FALSE) (LOGICAL)"
   ),
   optparse::make_option(
+    c("--feature_cont_trait_prop_corr"),
+    type = "double",
+    default = 1,
+    help = "Set proportion of ASVs correlated -- should be between 0 and 1 (DEFAULT/1) (DOUBLE)"
+  ),
+  optparse::make_option(
     c("--feature_cont_trait_corr"),
-    type = "numeric",
-    help = "Set correlation for continuous host trait with feature traits (NUMERIC)"
-  )
+    type = "double",
+    help = "Set mean covariance for continuous host trait with feature traits (DOUBLE)"
+  ),
+  optparse::make_option(
+    c("--feature_cont_trait_corr_sd"),
+    type = "double",
+    help = "Set standard deviation of covariance for cont. host trait (DOUBLE)"
+  ),
 )
 
 opt_parser <- optparse::OptionParser(option_list = option_list)
@@ -65,8 +76,11 @@ if(opt$microbe_sim_type == "ou"){
 } else {}
 
 if(opt$feature_cont_trait == TRUE){
-  if(is.null(opt$feature_cont_trait_corr)){
-    stop("ERROR: Need to specify correlation value") # TODO -- check what the correlation metric is
+  if (opt$feature_cont_trait_prop_corr < 0 || opt$feature_cont_trait_prop_corr > 1){
+    stop("ERROR: Proportion correlated should between 0 and 1")
+  } else {}
+  if(is.null(opt$feature_cont_trait_corr) || is.null(opt$feature_cont_trait_corr_sd)){
+    stop("ERROR: Need to specify correlation value AND stdev")
   } else {}
 } else {}
 
@@ -90,6 +104,8 @@ out_dir <- opt$out_dir
 effect_size <- opt$effect_size
 feature_cont_trait <- opt$feature_cont_trait
 cont_trait_corr <- opt$feature_cont_trait_corr
+cont_trait_corr_sd <- opt$feature_cont_trait_corr_sd
+cont_trait_prop_corr <- opt$feature_cont_trait_prop_corr
 
 # components of information for archive file
 simulation_id = paste("S", sprintf('%02d', sim_number), sep="")
@@ -174,19 +190,26 @@ ou_correlated <- function(n_ASV) {
   # assign("microbe_effect_df", microbe_effect_df, envir = .GlobalEnv)
 }
 
-generate_cov_matrix <- function(n_ASVs, host_ASV_cov) {
+generate_cov_matrix <- function(n_ASVs, host_ASV_cov, host_ASV_cov_sd, prop_corr) {
+  # TODO - parameters
+  #   percent correlated
+  #   degree of correlation (normal distribution around host_ASV_cov, with some standard deviation)
+  #   -- rnorm(host_ASV_cov, host_ASV_cov_sd)
+
   # Initializer n+1 x n+1 matrix with zeroes, where n+1 is the host and number of ASVs 
   cov_matrix <- matrix(0, n_ASVs+1, n_ASVs+1)
   
+  # Create degrees of correlated that are normally distributed around host_ASV_cov with stdev host_ASV_cov_sd
+  total_correlated_ASVs <- round(prop_corr * n_ASVs)
+  total_uncorrelated_ASVs <- n_ASVs - total_correlated_ASVs
+  covariance_vec <- c(rnorm(n = total_correlated_ASVs, mean=host_ASV_cov, sd=host_ASV_cov_sd), rep(0, total_uncorrelated_ASVs))
+  
+  # Set the covariance of all traits with host to 'host_ASV_cov'
+  cov_matrix[1,] <- c(1, covariance_vec)
+  cov_matrix[,1] <- c(1, covariance_vec)
+  
   # Set variances (diagonals) to 1
   diag(cov_matrix) <- 1
-  
-  # Set the covariance of all traits with host to 'a'
-  cov_matrix[1,] <- host_ASV_cov
-  cov_matrix[,1] <- host_ASV_cov
-  
-  # Set the variance of the host to 1
-  cov_matrix[1,1] <- 1
   
   return(cov_matrix)
 }
@@ -277,7 +300,7 @@ if (feature_cont_trait == FALSE) {
   for (i in 1:n_simulations){
     sim_iteration = sprintf('%04d', i)
     
-    tmp_vcv <- generate_cov_matrix(n_ASVs = 1000, host_ASV_cov = 0.5)
+    tmp_vcv <- generate_cov_matrix(n_ASVs = n_ASV, host_ASV_cov = cont_trait_corr, host_ASV_cov_sd =  cont_trait_corr_sd, prop_corr = cont_trait_prop_corr)
     tmp_cov_trait <- data.frame(phytools::sim.corrs(tree = coral_phy, vcv = tmp_vcv))
     vcv_colnames <- c("host_trait")
     for (i in 1:n_ASV){
@@ -293,6 +316,16 @@ if (feature_cont_trait == FALSE) {
       row.names = FALSE,
       sep = "\t"
     )
+
+    write.table(
+      x = tmp_vcv,
+      file = paste(tmp_output_folder, simulation_id, "_", sim_iteration, "_vcv.tsv", sep=""),
+      row.names = FALSE,
+      sep = "\t"
+
+    )
+
+    # TODO -- write table for vcv matrix; rename columns to vcv_colnames
     setTxtProgressBar(pb,i) # add to progress bar
   }
 } else {}
