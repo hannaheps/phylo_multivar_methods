@@ -163,7 +163,7 @@ cython_debug/
 
 # Simulation archives
 S*.zip
-analysis/simulatiion/output/S*
+analysis/simulation/output/S*
 .DS_Store
 analysis/.DS_Store
 analysis/simulation/.DS_Store
