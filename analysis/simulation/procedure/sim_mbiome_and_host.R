@@ -1,4 +1,6 @@
 set.seed(1989)
+# TODO -- Roxygen docstrings for different functions | 'roxygen2'
+# TODO -- add table dimension checks AND other test code
 
 library("ape") # dealing with phylogenies
 library("phytools") # phylogengenetic methods
@@ -42,10 +44,10 @@ option_list <- list (
     help = "Effect size when OU model is selected (DOUBLE)"
   ),
   optparse::make_option(
-    c("--feature_cont_trait"),
-    type = "logical",
-    default = FALSE,
-    help = "Generate continuous host trait folder (TRUE) or categorical host trait (DEFAULT/FALSE) (LOGICAL)"
+    c("--host_trait_type"),
+    type = "character",
+    # default = FALSE,
+    help = "Generate continuous host trait folder (cont) or discrete host trait (disc) (CHARACTER)"
   ),
   optparse::make_option(
     c("--feature_cont_trait_prop_corr"),
@@ -75,7 +77,7 @@ if(opt$microbe_sim_type == "ou"){
   } else {}
 } else {}
 
-if(opt$feature_cont_trait == TRUE){
+if(opt$host_trait_type == "cont"){
   if (opt$feature_cont_trait_prop_corr < 0 || opt$feature_cont_trait_prop_corr > 1){
     stop("ERROR: Proportion correlated should between 0 and 1")
   } else {}
@@ -102,7 +104,7 @@ n_simulations <- opt$n_simulations
 microbe_sim_type <- opt$microbe_sim_type
 out_dir <- opt$out_dir
 effect_size <- opt$effect_size
-feature_cont_trait <- opt$feature_cont_trait
+host_trait_type <- opt$host_trait_type
 cont_trait_corr <- opt$feature_cont_trait_corr
 cont_trait_corr_sd <- opt$feature_cont_trait_corr_sd
 cont_trait_prop_corr <- opt$feature_cont_trait_prop_corr
@@ -123,7 +125,7 @@ cat(paste("Simulation ID:", opt$n_ASV, "\n"))
 cat(paste("Total ASVs:", opt$n_ASV, "\n"))
 cat(paste("Total tables:", opt$n_simulations, "\n"))
 cat(paste("Continuous Similuation?"))
-if(feature_cont_trait == TRUE) {
+if(host_trait_type == "cont") {
   cat(paste("Correlation with host:", opt$))
 }
 cat(paste("Simulation type:", opt$microbe_sim_type, "\n"))
@@ -144,25 +146,25 @@ unlink(tmp_output_folder, recursive = TRUE) # delete temporary output folder (in
 dir.create(tmp_output_folder) # create tmp output folder
 
 # Define functions for each simulation type
-random_uncorrelated <- function(n_ASV) {
+random_uncorrelated <- function(n_ASV, tmp_microbes) {
   for (j in 1:n_ASV) {
       tmp_trait <- rnorm(n = n_species, mean = 0, sd = 10)
       tmp_colname <- paste("microbe", j, sep = "_")
       tmp_microbes[[tmp_colname]] <- tmp_trait
   }
-  assign("tmp_microbes", tmp_microbes, envir = .GlobalEnv)
+  return(tmp_microbes)
 }
 
-bm_uncorrelated <- function(n_ASV) {
+bm_uncorrelated <- function(n_ASV, tmp_microbes) {
   for (j in 1:n_ASV) {
       tmp_trait <- OUwie::OUwie.sim(phy = s.trait_history, simmap.tree = TRUE, alpha = c(1e-10, 1e-10), sigma.sq = c(1, 1), theta0 = 0, theta = c(0, 0))
       tmp_colname <- paste("microbe", j, sep = "_")
       tmp_microbes[[tmp_colname]] <- tmp_trait$X
-  }  
-  assign("tmp_microbes", tmp_microbes, envir = .GlobalEnv)
+  }
+  return(tmp_microbes)
 }
 
-ou_correlated <- function(n_ASV) {
+ou_correlated <- function(n_ASV, tmp_microbes) {
   # prop_affected <- 0.12 -- WE ARE MAKING 
   # effect_size # for transforming theta
   # microbe_effect_df <- data.frame(matrix(nrow = 0, ncol = 2))
@@ -186,7 +188,7 @@ ou_correlated <- function(n_ASV) {
       tmp_trait <- OUwie::OUwie.sim(phy = s.trait_history, simmap.tree = TRUE, alpha = c(tmp_alpha, tmp_alpha), sigma.sq = c(1, 1), theta0 = 0, theta = thetas)
       tmp_microbes[[tmp_colname]] <- tmp_trait$X
   }
-  assign("tmp_microbes", tmp_microbes, envir = .GlobalEnv)
+  return(tmp_microbes)
   # assign("microbe_effect_df", microbe_effect_df, envir = .GlobalEnv)
 }
 
@@ -222,8 +224,8 @@ n_species <- length(coral_phy$tip.label)
 cat("Simulating host and microbiome...\n")
 pb = txtProgressBar(min = 0, max = n_simulations, initial = 0, style = 3) # create progress bar
 
-# if feature_cont_trait == FALSE
-if (feature_cont_trait == FALSE) {
+# if host_trait_type == FALSE
+if (host_trait_type == "disc") {
   for (i in 1:n_simulations){
     sim_iteration = sprintf('%04d', i)
     # Simulate host
@@ -266,11 +268,11 @@ if (feature_cont_trait == FALSE) {
     tmp_microbes <- data.frame('#SampleID' = coral_phy$tip.label, check.names = FALSE)
     
     if (microbe_sim_type == "random") {
-      random_uncorrelated(n_ASV)
+      random_uncorrelated(n_ASV, tmp_microbes)
     } else if (microbe_sim_type == "bm") {
-      bm_uncorrelated(n_ASV)
+      bm_uncorrelated(n_ASV, tmp_microbes)
     } else if (microbe_sim_type == "ou") {
-      ou_correlated(n_ASV)
+      ou_correlated(n_ASV, tmp_microbes)
     } else {
       stop("Invalid microbe_sim_type, should be random, bm, or ou")
     }
@@ -296,7 +298,7 @@ if (feature_cont_trait == FALSE) {
     
     setTxtProgressBar(pb,i) # add to progress bar
   }
-} else if (feature_cont_trait == TRUE){
+} else if (host_trait_type == "cont"){
   for (i in 1:n_simulations){
     sim_iteration = sprintf('%04d', i)
     
@@ -321,8 +323,8 @@ if (feature_cont_trait == FALSE) {
       x = tmp_vcv,
       file = paste(tmp_output_folder, simulation_id, "_", sim_iteration, "_vcv.tsv", sep=""),
       row.names = FALSE,
-      sep = "\t"
-
+      sep = "\t",
+      headings # FIXME - I don't remember the syntax
     )
 
     # TODO -- write table for vcv matrix; rename columns to vcv_colnames
