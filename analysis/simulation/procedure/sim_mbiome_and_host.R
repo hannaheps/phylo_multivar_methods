@@ -65,6 +65,12 @@ option_list <- list (
     type = "double",
     help = "Set standard deviation of covariance for cont. host trait (DOUBLE)"
   ),
+  optparse::make_option(
+    c("--tree_sample_prop"),
+    type = "double",
+    default = 1,
+    help = "Set tree sampling fraction. Actual integer number will be round(tree_sample_frac*N_nodes). (DOUBLE)"
+  )
 )
 
 opt_parser <- optparse::OptionParser(option_list = option_list)
@@ -85,6 +91,11 @@ if(opt$host_trait_type == "cont"){
     stop("ERROR: Need to specify correlation value AND stdev")
   } else {}
 } else {}
+
+if(opt$tree_sample_prop < 0 || opt$tree_sample_prop > 1){
+  stop("ERROR: Tree sample proportion invalid, should be between 0 and 1")
+} else {}
+
 
 # check if all options are specified, if not stop and help
 if(any(c(is.null(opt$n_ASV), is.null(opt$n_simulations), is.null(opt$microbe_sim_type), is.null(opt$sim_number)), is.null(opt$out_dir)) == TRUE) {
@@ -108,6 +119,7 @@ host_trait_type <- opt$host_trait_type
 cont_trait_corr <- opt$feature_cont_trait_corr
 cont_trait_corr_sd <- opt$feature_cont_trait_corr_sd
 cont_trait_prop_corr <- opt$feature_cont_trait_prop_corr
+tree_sample_prop <- opt$tree_sample_prop
 
 # components of information for archive file
 simulation_id = paste("S", sprintf('%02d', sim_number), sep="")
@@ -219,6 +231,13 @@ generate_cov_matrix <- function(n_ASVs, host_ASV_cov, host_ASV_cov_sd, prop_corr
 # Load HR2015 phylogeny
 coral_phy <- ape::read.tree("../input/huang_roy_molecular_r2.newick")
 n_species <- length(coral_phy$tip.label)
+
+sub_phy_n_species <- round(tree_sample_prop*n_species)
+sub_phy_tips_to_keep <- sample(coral_phy$tip.label, sub_phy_n_species)
+coral_phy <- keep.tip(coral_phy, sub_phy_tips_to_keep)
+
+
+
 
 
 cat("Simulating host and microbiome...\n")
