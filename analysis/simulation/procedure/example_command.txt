@@ -1,0 +1,2 @@
+Rscript --vanilla sim_mbiome_and_host.R --sim_number 1 --n_ASV 50 --microbe_sim_type ou --n_simulations 10 --effect_size 2 --host_trait_type disc --feature_cont_trait_prop_corr 0.15 --feature_cont_trait_corr 0.60 --feature_cont_trait_corr_sd 0.1 --tree_sample_prop 0.05 --out_dir ../output/sim_test_4_14_25/ --host_tree ../input/test_unlabelled_birdlife_tree.newick
+
