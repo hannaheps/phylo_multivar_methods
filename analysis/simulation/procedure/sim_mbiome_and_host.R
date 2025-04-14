@@ -24,6 +24,12 @@ option_list <- list (
     help = "Number of microbes to simulate (INTEGER)"
   ),
   optparse::make_option(
+    c("--host_tree"),
+    type = "character",
+    default = "../input/huang_roy_molecular_r2.newick",
+    help = "Path to a host tree in Newick format, example: '../input/tree.newick'. Defaults to Huang Roy coral tree, assumed to be in ../input/huang_roy_molecular_r2.newick (CHARACTER)"
+  ),
+  optparse::make_option(
     c("--microbe_sim_type"),
     type = "character",
     help = "Feature simulation type (CHARACTER). OPTIONS: random, bm, ou"
@@ -125,7 +131,14 @@ tree_sample_prop <- opt$tree_sample_prop
 simulation_id = paste("S", sprintf('%02d', sim_number), sep="")
 host_info = "host_ER_BM"
 microbe_info = paste("microbe", microbe_sim_type, n_ASV, sep = "_")
-tree_info = "coral_tree"
+
+if (opt$host_tree == "../input/huang_roy_molecular.newick"){
+    tree_info = 'huang_roy'
+}else{
+   tree_info = 'custom_tree' 
+   #add better parsing, need to remove path to avoid errors
+}
+
 simulation_info = paste("x", n_simulations, sep="")
 
 archive_name = paste(simulation_id, host_info, microbe_info, tree_info, simulation_info, sep = "_")
@@ -229,7 +242,7 @@ generate_cov_matrix <- function(n_ASVs, host_ASV_cov, host_ASV_cov_sd, prop_corr
 }
 
 # Load HR2015 phylogeny
-coral_phy <- ape::read.tree("../input/huang_roy_molecular_r2.newick")
+coral_phy <- ape::read.tree(opt$host_tree)
 n_species <- length(coral_phy$tip.label)
 
 sub_phy_n_species <- round(tree_sample_prop*n_species)
