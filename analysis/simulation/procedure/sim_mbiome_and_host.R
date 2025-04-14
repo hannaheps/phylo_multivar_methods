@@ -138,7 +138,7 @@ cat(paste("Total ASVs:", opt$n_ASV, "\n"))
 cat(paste("Total tables:", opt$n_simulations, "\n"))
 cat(paste("Continuous Similuation?"))
 if(host_trait_type == "cont") {
-  cat(paste("Correlation with host:", opt$))
+  cat(paste("Correlation with host:", opt$feature_cont_trait_corr))
 }
 cat(paste("Simulation type:", opt$microbe_sim_type, "\n"))
 if(exists("opt$effect_size")){
